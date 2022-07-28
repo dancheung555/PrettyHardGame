@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.js"></script>
+
+</head>
+
+<body>
+
+    <script>
+
+    var config = {
+      type: Phaser.AUTO,
+      width: 4200,
+      height: 900,
+      physics: {
+        default: 'arcade',
+    },
+
+    scene: {
+      preload: preload,
+      create: create,
+      update: update,
+    }
+
+    };
+
+    class Player extends Phaser.Physics.Arcade.Sprite {
+      leftWall = true;
+      rightWall = true;
+      constructor(scene, x, y) {
+        super(scene, x, y, 'player');
+        scene.add.existing(this);
+        scene.physics.add.existing(this);
+        this.setScale(2);
+        this.setCollideWorldBounds(true);
+        this.setGravityY(3000); //We will set gravity *per object* rather than for the scene!
+      }
+    }
+
+    class Enemy extends Phaser.Physics.Arcade.Sprite {
+      constructor(scene, x, y) {
+        super(scene, x, y, 'enemy');
+        scene.add.existing(this);
+        scene.physics.add.existing(this);
+        this.setCollideWorldBounds(true);
+        this.setGravityY(1000);
+        this.setScale(2);
+      }
+    }
+
+
+    var game = new Phaser.Game(config);
+
+
+    //Game Objects
+    var platforms;
+    var player;
+    var enemies = [];
+    var totalEnemies = 100;
+    var currentEnemies = totalEnemies;
+
+    //Keyboard controls
+    var cursors;
+    var upcursor;
+    var keys;
+    var wkey;
+    var space;
+    var harder = false;
+
+
+
+    var gui;
+    var guiTimer;
+
+    var shift;
+    var inputDisabled = false;
+    var myScene;
+
+    var notMoving = true;
+
+    function preload() {
+      this.load.image('bg', 'assets/testMap.png');
+      this.load.image('platform', 'assets/platform.png');
+      //this.load.image('player', 'assets/wabbit.png');
+      this.load.spritesheet('enemy', 'assets/enemy.png', {frameWidth: 16, frameHeight: 16});
+      //this.load.spritesheet('player', 'assets/texture.png', { frameWidth: 20, frameHeight: 20});
+      this.load.spritesheet('player', 'assets/industrialCharacter.png', {frameWidth: 16, frameHeight: 16});
+    }
+
+    function create() {
+      //Set the background origin to be at (0, 0) or top left corner of the image rather than the center of the image asset
+      let background = this.add.tileSprite(0, 0, game.scale.width*2, game.scale.height*2, 'bg').setOrigin(0, 0);
+      myScene = this;
+      this.anims.create({
+        key: 'run',
+        frames: this.anims.generateFrameNumbers('player', {
+        frames: [8,9,10,11] }),
+        frameRate: 8,
+        repeat: 1
+      })
+
+      this.anims.create({
+        key: 'jump',
+        frames: this.anims.generateFrameNumbers('player', {
+        frames: [12,13,14,15] }),
+        frameRate: 8,
+        repeat: 1
+      })
+
+      this.anims.create({
+        key: 'idleP',
+        frames: this.anims.generateFrameNumbers('player', {
+          frames: [0,1,2,3] }),
+          frameRate: 8,
+          repeat: 1
+      })
+
+
+      //Create the platforms and the player character set to collide with the platforms
+      createPlatforms(this);
+      player = new Player(this, 400, 400);
+      this.physics.add.collider(player, platforms);
+      this.cameras.main.setDeadzone(400,250);
+      this.cameras.main.setBounds(0, 0, game.scale.width, game.scale.height, false);
+      this.cameras.main.setViewport(0,0, 2000, 900/*set this to map height*/)
+      this.cameras.main.startFollow(player, true, .9, 1, 0, 200);
+
+      //Create the carrot interactables
+      for (var i = 0; i < totalEnemies; i++) {
+        var spacingOfEnemies = 40;
+        if(harder) spacingOfEnemies = 50;
+        let myEnemy = new Enemy(this, 1200+spacingOfEnemies*i, 100);
+        this.physics.add.collider(myEnemy, platforms);
+        enemies.push(myEnemy);
+          this.anims.create({
+             key: 'idle',
+             frames: this.anims.generateFrameNumbers('enemy', {
+               frames: [0,1,2,3] }),
+               frameRate: 8,
+               repeat: -1
+           })
+           myEnemy.play('idle');
+      }
+
+      this.physics.add.overlap(player, enemies, eatEnemy, null, this);
+
+      //Set up user input
+      cursors = this.input.keyboard.createCursorKeys();
+      keys = this.input.keyboard.addKeys('A, D');
+      wkey = this.input.keyboard.addKey('W');
+      space = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+      space.on('down', jump); //calls jump function when space is pressed
+      wkey.on('down', jump);
+      gui = this.add.text(16, 16, '', {fontSize: '32px', fill: '#000'});
+    }
+
+    function createPlatforms(scene) {
+      platforms = scene.physics.add.staticGroup();
+
+      //basePlatform is the floor of the game
+      let basePlatform = platforms.create(game.scale.width/2, game.scale.height-16, 'platform');
+      basePlatform.setScale(150, 1).refreshBody(); //scales the base platform in the x axis to cover the entire floor
+
+      platforms.create(250, 250, 'platform').setScale(1, 1).refreshBody(); //creates the upper left platform
+
+
+      if(!harder) {
+        platforms.create(800, 420, 'platform').setScale(1, 20).refreshBody();
+        platforms.create(1200, 540, 'platform').setScale(1, 20).refreshBody();
+        platforms.create(1600, 540, 'platform').setScale(1, 20).refreshBody();
+        platforms.create(2000, 540, 'platform').setScale(1, 20).refreshBody();
+        platforms.create(2400, 540, 'platform').setScale(1, 20).refreshBody();
+        platforms.create(2800, 540, 'platform').setScale(1, 20).refreshBody();
+        platforms.create(3200, 420, 'platform').setScale(1, 20).refreshBody();
+      } else {
+        platforms.create(800, 420, 'platform').setScale(1, 20).refreshBody();
+        platforms.create(1200, 540, 'platform').setScale(1, 20).refreshBody();
+        platforms.create(1650, 540, 'platform').setScale(1, 20).refreshBody();
+        platforms.create(2100, 540, 'platform').setScale(1, 20).refreshBody();
+        platforms.create(2550, 540, 'platform').setScale(1, 20).refreshBody();
+        platforms.create(3000, 540, 'platform').setScale(1, 20).refreshBody();
+        platforms.create(3650, 420, 'platform').setScale(1, 20).refreshBody();
+      }
+
+    }
+
+    function update() {
+        //Player will not move in the x-axis unless a movement key is being pressed
+        if(!inputDisabled){
+          player.setVelocityX(0);
+        }
+
+
+        //Handle player movements
+        if ((cursors.left.isDown || keys.A.isDown) && !inputDisabled) {
+            player.setVelocityX(-700);
+            //player.play('texture');
+            if (!player.anims.isPlaying){
+              player.play('run');
+            }
+            //player.play('run');
+            player.flipX = true;        }
+
+        if ((cursors.right.isDown || keys.D.isDown) && !inputDisabled) {
+            player.setVelocityX(700);
+            if (!player.anims.isPlaying) {
+              player.play('run');
+            }
+            player.flipX = false;
+        }
+        //if(cursors.up.isDown || keys.W.isDown)
+
+        /*
+        if((player.body.touching.left || player.body.touching.right) && player.body.velocity.y > 0){
+          player.body.setGravityY(0);
+          player.body.setVelocityY(300);
+        }else{
+          player.body.setGravityY(3000);
+        }
+        */
+
+        //this.cameras.main.centerOn(player.x+1500, game.scale.height/2);
+
+        //if (notMoving){
+        //  player.play('idleP');
+        //}
+
+    }
+
+    function jump(event) {
+        if (player.body.touching.down) {
+          player.setVelocityY(-1000);
+          player.leftWall = true;
+          player.rightWall = true;
+        } else if(player.body.touching.left && player.leftWall) {
+          player.leftWall = false;
+          player.rightWall = true;
+          player.setVelocityY(-1000);
+          /*
+          player.setVelocityX(700);
+          inputDisabled = true;
+          guiTimer = myScene.time.delayedCall(330, inputEnable, [], myScene);
+          */
+        } else if(player.body.touching.right && player.rightWall) {
+          player.leftWall = true;
+          player.rightWall = false;
+          player.setVelocityY(-1000);
+          /*
+          player.setVelocityX(-700);
+          inputDisabled = true;
+          guiTimer = myScene.time.delayedCall(330, inputEnable, [], myScene);
+          */
+        }
+        player.play('jump');
+    }
+
+    function inputEnable(){
+        inputDisabled = false;
+    }
+
+    //This function is called when a player overlaps with a carrot
+    function eatEnemy(player, enemy) {
+      enemy.disableBody(true, true); //remove that particular carrot from the game (physics and visibility)
+      currentEnemies = currentEnemies -1;
+      gui.setText('Yum yum!');
+      guiTimer = this.time.delayedCall(1000, removeText, [], this);
+
+      this.scene.restart();
+    }
+
+    //Reset the gui text to be empty after the guiTimer elapses
+    function removeText() {
+      gui.setText('');
+    }
+
+    </script>
+
+</body>
+
+</html>
